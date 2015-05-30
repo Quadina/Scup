@@ -2,6 +2,7 @@ package cz.matejsimek.scup;
 
 import cz.matejsimek.scup.DrawTool.*;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
@@ -10,7 +11,8 @@ import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
 import java.awt.image.WritableRaster;
-import java.util.ArrayList;
+import java.io.IOException;
+import java.util.*;
 import java.util.prefs.Preferences;
 
 /**
@@ -34,6 +36,7 @@ public class Paint extends javax.swing.JFrame {
     private JSlider size;
     private JButton color;
     private JButton blur;
+    private JScrollPane scrollPanel;
     private AbstractDrawTool drawTool;
     private Point start;
     private BufferedImage buffImage;
@@ -58,6 +61,17 @@ public class Paint extends javax.swing.JFrame {
     }
 
     private void init(BufferedImage image) {
+        try {
+            setIconImage(ImageIO.read(Scup.class.getResource("resources/icon64.png")));
+            java.util.List<Image> icons = new ArrayList<Image>();
+            int[] sizes = {24,32,48,64,96,128,256,512};
+            for (int size : sizes) {
+                icons.add(ImageIO.read(Scup.class.getResource("resources/icon" + size + ".png")));
+            }
+            setIconImages(icons);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         imgHistory = new ArrayList<BufferedImage>();
         imgHistoryIterator = 0;
         colorChooser = new ColorChooser(color);
@@ -67,18 +81,25 @@ public class Paint extends javax.swing.JFrame {
 
         imgHistory.add(bufferedImageClone(image));
         imgPanel.setImage(image);
-        imgPanel.setSize(image.getWidth(), image.getHeight());
-        imgPanel.setMinimumSize((new Dimension(image.getWidth(), image.getHeight())));
-        imgPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 1));
-        setSize((new Dimension(getWidth() + image.getWidth(), getHeight() + image.getHeight())));
+        imgPanel.setPreferredSize((new Dimension(image.getWidth(), image.getHeight())));
+        scrollPanel.setSize((new Dimension(image.getWidth(), image.getHeight())));
+        scrollPanel.getViewport().setScrollMode(JViewport.SIMPLE_SCROLL_MODE);
+        setSize((new Dimension(image.getWidth(), image.getHeight())));
         setResizable(false);
         setLocationByPlatform(true);
+        setAlwaysOnTop(true);
         pack();
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLocationRelativeTo(null);
         setVisible(true);
         color.setForeground(colorChooser.getColor().getColor());
+
+        Rectangle maxWinBounds = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        setSize((new Dimension(
+                (int) Math.min(getWidth(), maxWinBounds.getWidth()),
+                (int) Math.min(getHeight(), maxWinBounds.getHeight())
+        )));
     }
 
     private void performRedo() {
@@ -186,7 +207,11 @@ public class Paint extends javax.swing.JFrame {
                     prefs.put("selected_tool", "blur");
                 }
                 if (actionEvent.getSource() == text) {
-                    //@todo
+                    text.setSelected(true);
+                    lastAction = text;
+                    drawTool = new TextDrawTool();
+                    prefs.put("selected_tool", "text");
+                    imgPanel.grabFocus();
                 }
             }
         };
@@ -201,28 +226,47 @@ public class Paint extends javax.swing.JFrame {
             }
         });
 
+        imgPanel.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                super.keyTyped(e);
+                if (drawTool instanceof TextDrawTool) {
+                    ((TextDrawTool) drawTool).keyPressed(e);
+                    BufferedImage image = bufferedImageClone(buffImage);
+                    imgPanel.setImage(image);
+                    draw(e);
+                    imgHistory.remove(imgHistory.size() - 1);
+                    imgHistory.add(image);
+                }
+            }
+        });
+
         imgPanel.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 super.mousePressed(e);
                 start = e.getPoint();
                 buffImage = imgPanel.getImage();
+                if (drawTool instanceof TextDrawTool) {
+                    imgPanel.grabFocus();
+                    ((TextDrawTool) drawTool).clear();
+                    ((TextDrawTool) drawTool).setPosition(e.getPoint());
+                    BufferedImage image = bufferedImageClone(buffImage);
+                    imgPanel.setImage(image);
+                    createNewHistoryEntry(image);
+                }
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
                 super.mouseReleased(e);
-                BufferedImage image = imgPanel.getImage();
-                draw(e);
-                for (int i = 0; i > imgHistoryIterator; i--) {
-                    try {
-                        imgHistory.remove(imgHistory.size() - 1);
-                    } catch (Exception ex) {
-
-                    }
+                if (drawTool instanceof TextDrawTool) {
+                    return;
                 }
-                imgHistoryIterator = 0;
-                imgHistory.add(bufferedImageClone(image));
+                BufferedImage image = bufferedImageClone(buffImage);
+                imgPanel.setImage(image);
+                draw(e);
+                createNewHistoryEntry(image);
             }
         });
 
@@ -248,6 +292,18 @@ public class Paint extends javax.swing.JFrame {
                 }
             }
         });
+    }
+
+    private void createNewHistoryEntry(BufferedImage image) {
+        for (int i = 0; i > imgHistoryIterator; i--) {
+            try {
+                imgHistory.remove(imgHistory.size() - 1);
+            } catch (Exception ex) {
+
+            }
+        }
+        imgHistoryIterator = 0;
+        imgHistory.add(image);
     }
 
     private void restorePrefs() {
@@ -289,6 +345,10 @@ public class Paint extends javax.swing.JFrame {
         if (drawTool instanceof ArrowDrawTool) {
             ((ArrowDrawTool) drawTool).setSize(thickness * 2); //brzydkoooo
         }
+        if (drawTool instanceof TextDrawTool) {
+            Font font = g.getFont().deriveFont( Font.BOLD, 8.0f + (thickness * 2));
+            g2.setFont(font);
+        }
         if (drawTool instanceof AbstractDrawTool) {
             drawTool.setImage(image);
             drawTool.setGraphics(g2);
@@ -310,15 +370,17 @@ public class Paint extends javax.swing.JFrame {
         Point point = new Point((int) (start.getX() - rect.getX()), (int) (start.getY() - rect.getY()));
         Dimension dimension = getRelDimension(end);
 
+        Rectangle viewRect = scrollPanel.getViewport().getViewRect();
         return new Point(
-                (int) Math.max(0, Math.min(point.getX(), point.getX() + dimension.getWidth())),
-                (int) Math.max(0, Math.min(point.getY(), point.getY() + dimension.getHeight()))
+                (int) Math.max(0, Math.min(viewRect.getX() + point.getX(), viewRect.getX() + point.getX() + dimension.getWidth())),
+                (int) Math.max(0, Math.min(viewRect.getY() + point.getY(), viewRect.getY() + point.getY() + dimension.getHeight()))
         );
     }
 
     private Point getRelStartOrg() {
         Rectangle rect = imgPanel.getVisibleRect();
-        return new Point((int) (start.getX() - rect.getX()), (int) (start.getY() - rect.getY()));
+        Rectangle viewRect = scrollPanel.getViewport().getViewRect();
+        return new Point((int) (viewRect.getX() + start.getX() - rect.getX()), (int) (viewRect.getY() + start.getY() - rect.getY()));
     }
 
     private Dimension getRelDimension(Point end) {
@@ -346,8 +408,19 @@ public class Paint extends javax.swing.JFrame {
         Point relStartOrg = getRelStartOrg();
         Dimension relDimOrg = getRelDimension(e.getPoint());
 
-        if (drawTool != null) {
+        if (drawTool != null && !(drawTool instanceof TextDrawTool)) {
             drawTool.draw(relStart, relDim, relStartOrg, relDimOrg);
+        }
+
+        g2.dispose();
+        imgPanel.repaint();
+    }
+
+    private void draw(KeyEvent e) {
+        Graphics2D g2 = getGraphics2D(imgPanel.getImage());
+
+        if (drawTool instanceof TextDrawTool) {
+            ((TextDrawTool)drawTool).draw();
         }
 
         g2.dispose();

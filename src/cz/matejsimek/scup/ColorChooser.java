@@ -9,14 +9,13 @@ import java.util.prefs.Preferences;
 /**
  * Created by kamil on 20.05.15.
  */
-public class ColorChooser extends javax.swing.JFrame {
+public class ColorChooser extends javax.swing.JDialog {
     private JPanel rootPanel;
     private JColorChooser color;
     private JButton ok;
     private JButton parentButton;
 
     public ColorChooser(JButton bb) {
-        super("Scup");
         parentButton = bb;
         setContentPane(rootPanel);
         setResizable(false);
@@ -26,6 +25,8 @@ public class ColorChooser extends javax.swing.JFrame {
         color.setColor(Color.RED);
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setLocationRelativeTo(null);
+        setAlwaysOnTop(true);
         ok.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent actionEvent) {

@@ -1,8 +1,12 @@
 package cz.matejsimek.scup;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.prefs.Preferences;
 
 /**
@@ -26,6 +30,18 @@ public class Setting extends javax.swing.JFrame {
 
     public Setting() {
         super("Settings");
+        try {
+            setIconImage(ImageIO.read(Scup.class.getResource("resources/icon64.png")));
+            java.util.List<Image> icons = new ArrayList<Image>();
+            int[] sizes = {24,32,48,64,96,128,256,512};
+            for (int size : sizes) {
+                icons.add(ImageIO.read(Scup.class.getResource("resources/icon" + size + ".png")));
+            }
+            setIconImages(icons);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         setLocationByPlatform(true);
         setContentPane(rootPanel);
         pack();
